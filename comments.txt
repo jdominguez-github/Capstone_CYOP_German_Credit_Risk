@@ -1,0 +1,74 @@
+-Pre-processing:
+--ES UNA VERSIÓN LIMPIA DE UN DATASET ORIGINAL (LINKS A AMBAS)
+https://archive.ics.uci.edu/ml/datasets/Statlog+(German+Credit+Data)
+https://www.kaggle.com/uciml/german-credit/download
+--EL DATASET ORIGINAL NO TENÍA COLUMNA OUTCOME PERO EN EL DISCUSSION FORUM ALGUIEN MENCIONA ESTO Y OTRO ALGUIEN SUBE EL FICHERO CON LOS DATOS CORRECTOS (LINK AL FICHERO NUEVO)
+https://storage.googleapis.com/kaggle-forum-message-attachments/237294/7771/german_credit_data.csv
+--CHECKING ACCOUNT IS DESCRIBED AS NUMERIC BUT IS IN REALITY TEXT
+
+--Eliminar NAs (o convertir a la media de la columna)
+
+DESCRIBIR DATASET CON DESCRIPCIÓN DE KAGGLE PARA CADA COLUMNA.
+Age (numeric)
+Sex (text: male, female)
+Job (numeric: 0 - unskilled and non-resident, 1 - unskilled and resident, 2 - skilled, 3 - highly skilled)
+Housing (text: own, rent, or free)
+Saving accounts (text - little, moderate, quite rich, rich)
+Checking account (numeric, in DM - Deutsch Mark)--CHECKING ACCOUNT IS DESCRIBED AS NUMERIC BUT IS IN REALITY TEXT
+Credit amount (numeric, in DM)
+Duration (numeric, in month)
+Purpose (text: car, furniture/equipment, radio/TV, domestic appliances, repairs, education, business, vacation/others)
+
+
+
+
+
+--Formateo, conversiones de unidades, etc.
+--Categorías: Factorización?
+--Estandarización
+--Identificar características más relevantes y eliminar las menos relevantes.
+--Establecer tramos (categorizar) variables numéricas (como la cantidad de dinero a recaudar).
+...
+
+-Categorías más exitosas
+-Características del dataset más determinantes para predicciones
+
+-Distribución de: características
+-Distribución de resultado
+-Boxplot?
+-Correlación entre características y resultado.
+
+
+
+
+Model	Train ACC	Test ACC
+K-Neighbors	95.6%	94.8%
+Naive BAyes	74.4%	74.3%
+DecisionTree	99.9%	99.8
+DecisionTree/AdaBoost	100.0%	99.8%
+Random/AdaBoost	99.9%	99.9%
+RandomForest/AdaBoost	99.9	99.9%
+Methodology
+The current implementation of this project utilizes the following models for the Kickstarter prediction problem:
+
+K-Nearest Neighbor
+Naive Bayes
+Decision Tree
+Decision Tree - AdaBoost
+Random Forest
+Random Forest - AdaBoost
+
+
+AUC: 
+
+After splitting the dataset into 'training' and 'test' sets, I fit various classifier models on the dataset. I finally selected random forest classifier and it was slightly better 
+than other models in terms of its AUC (0.77) and the precision (71%).
+
+I decided to focus on 'precision' as a perfomance metric as a false positve (Predicting that a project will be funded when it actually ends up not being funded) 
+was a more serious error than the false negative. I did not focus on false-negative as it's unlikely that any creator would abandon their painstaking efforts on their Kickstarter 
+project after receiving an estimate from a single website.
+
+I used the 'feature_importances_' feature of the model to find the most predictive features. Keeping the value of all other features constant, I increased and decreased the value 
+of the most predictive features by a small value to observe the change in the campaign's probablity of success.Changing certain features reulted in a very modest improvement 
+in the campaign's probablity of success.
+

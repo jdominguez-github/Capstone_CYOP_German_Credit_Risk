@@ -16,183 +16,249 @@ download.file("https://github.com/jdominguez-github/Capstone_CYOP_German_Credit_
 
 credit <- fread(text = gsub(",", ",", readLines(dl)),
       col.names = c("Seq","Age","Sex","Job","Housing","Saving_accounts","Checking_account","Credit_amount",
-      "Duration","Purpose"))
+      "Duration","Purpose","Risk"))
 
 ### Data pre-processing
 
 # Search for NA values over all columns of the dataset
 sapply(credit,function(x) sum(is.na(x)))
 
-# There are no NA values
+# Number of NA Values
+# Saving_accounts: 183
+# Checking_account: 394 
 
-# Convert outcome variable "status" into factor
-kickstarter_ini <- kickstarter_ini %>% 
-  mutate(status = factor(status))
+# For NA in the Saving_accounts column the most common value in the dataset, which is "little", will be assigned
+table(credit$Saving_accounts)
+credit[is.na(credit$Saving_accounts)]$Saving_accounts <- "little"
 
-# Create "year" variable with the year the project was launched in
-kickstarter_ini <- kickstarter_ini %>% 
-  mutate(year = year(launched_at))
+# For NA in the Checking_accounts column the most common value in the dataset, which is "little", will be assigned
+table(credit$Checking_account)
+credit[is.na(credit$Checking_account)]$Checking_account <- "little"
 
-# Create binary "success" variable based on the status variable
-kickstarter_ini <- kickstarter_ini %>% 
-  mutate(success = ifelse(status=="successful",1,0)) %>%
-  mutate(success = factor(success))
+# Confirm that no NA values remain in the dataset
+sapply(credit,function(x) sum(is.na(x)))
 
-# Drop variables which are directly related to the outcome (backers, pledged, etc.)
-kickstarter <- kickstarter_ini %>% select(main_category,country,city,goal_usd,success,year,duration,
-                                          blurb_length,name_length,start_month,end_month,start_Q,end_Q)
+# Convert outcome variable "Risk" into factor
+credit <- credit %>% 
+  mutate(Risk = factor(Risk))
 
-### Create training set, test set and validation set (final hold-out test set)
-
-# Split kickstarter data set into training set (80%) and test set (20%)
-test_index <- createDataPartition(kickstarter$success,1,0.2,list=FALSE)
-
-kickstarter_test <- kickstarter[test_index, ]
-kickstarter_train <- kickstarter[-test_index, ]
+# Convert rest of categorical features into factor
+credit <- credit %>% 
+  mutate(Sex = factor(Sex), Job = factor(Job), Housing = factor(Housing), Saving_accounts = factor(Saving_accounts), 
+         Checking_account = factor(Checking_account),Purpose = factor(Purpose))
 
 
-### kickstarter dataset overview ### 
+### Create training set and test set
+
+# Split credit data set into training set (80%) and test set (20%)
+test_index <- createDataPartition(credit$Risk,1,0.2,list=FALSE)
+
+credit_test <- credit[test_index, ]
+credit_train <- credit[-test_index, ]
+
+
+### credit dataset overview ### 
 
 # General structure of the dataset
-str(kickstarter_ini)
+str(credit)
 
 # Summary stats
-summary(kickstarter_ini)
+summary(credit)
 
 # Sample of first 10 rows
-head(kickstarter_ini)
+head(credit)
 
 # Total number of rows
-c("Number of projects" = nrow(kickstarter_ini))
+c("Number of projects" = nrow(credit))
 
 
-### kickstarter data exploration ### 
+### credit data exploration ### 
 
-# Total number of countries
-c("Number of countries" = length(unique(kickstarter_ini$country)))
+#Number of good / bad credit risks
+cont_risk <- table(credit$Risk)
+cont_risk
 
-# Total number of main categories
-c("Number of main categories" = length(unique(kickstarter_ini$main_category)))
+# Proportion of good credit risks
+c("Proportion of succesful projects" = mean(credit$Risk=="good"))
 
-# Total number of sub-categories
-c("Number of sub-categories" = length(unique(kickstarter_ini$sub_category)))
-
-# Average goal amount in USD
-c("Average goal amount in USD" = mean(kickstarter_ini$goal_usd))
-
-# Average pledged amount in USD
-c("Average pledged amount in USD" = mean(kickstarter_ini$usd_pledged))
-
-#Number of non-successful (0) / successful projects (1)
-cont_succ <- table(kickstarter_ini$success)
-cont_succ
-
-# Proportion of succesful projects
-c("Proportion of succesful projects" = mean(kickstarter_ini$success==1))
-
-# Average goal amount in USD for successful projects
-kick_succ <- kickstarter_ini %>% filter(success==1)
-c("Average goal amount in USD" = mean(kick_succ$goal_usd))
-
-# Average pledged amount in USD for successful projects
-c("Average pledged amount in USD" = mean(kick_succ$usd_pledged))
-
-# Success stacked bar plot
-cont_succ <- table(kickstarter_ini$success)
-
+# Credit risk stacked bar plot
+cont_succ <- table(credit$Risk)
 data.frame(cont_succ) %>% 
   ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
   geom_bar(stat ="identity") +
-  xlab("Success")
+  xlab("Risk") +
+  ggtitle("Credit risk stacked bar plot")
 
-# Category distribution (top 20 main categories)
-kickstarter_ini %>% 
-  group_by(main_category) %>% 
-  summarize(n=n()) %>% 
-  arrange(desc(n)) %>% 
-  ggplot(aes(reorder(main_category,-n),n,fill=main_category)) +
+# Sex stacked bar plot
+cont_succ <- table(credit$Sex)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Sex") +
+  ggtitle("Sex stacked bar plot")
+
+# Job stacked bar plot
+cont_succ <- table(credit$Job)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Job") +
+  ggtitle("Job stacked bar plot")
+
+# Housing stacked bar plot
+cont_succ <- table(credit$Housing)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Housing") +
+  ggtitle("Housing stacked bar plot")
+
+# Saving_accounts stacked bar plot
+cont_succ <- table(credit$Saving_accounts)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Saving accounts") +
+  ggtitle("Saving_accounts stacked bar plot")
+
+# Checking_account stacked bar plot
+cont_succ <- table(credit$Checking_account)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Checking account") +
+  ggtitle("Checking_account stacked bar plot")
+
+# Purpose stacked bar plot
+cont_succ <- table(credit$Purpose)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Purpose") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ggtitle("Purpose stacked bar plot")
+
+# Age boxplot
+credit %>% ggplot(aes(Risk,Age,fill=Risk)) + 
+  geom_boxplot() +
+  ggtitle("Age boxplot")
+
+# Credit amount boxplot
+credit %>% ggplot(aes(Risk,Credit_amount,fill=Risk)) + 
+  geom_boxplot() +
+  ggtitle("Credit amount boxplot")
+
+# Duration boxplot
+credit %>% ggplot(aes(Risk,Duration,fill=Risk)) + 
+  geom_boxplot() +
+  ggtitle("Duration boxplot")
+
+# Age distribution
+credit %>% ggplot(aes(Age)) + 
+  geom_histogram(fill="black") +
+  ggtitle("Age distribution")
+
+# Credit amount distribution
+credit %>% ggplot(aes(Credit_amount)) + 
+  geom_histogram(fill="black") +
+  ggtitle("Credit amount distribution")
+
+# Duration distribution
+credit %>% ggplot(aes(Duration)) + 
+  geom_histogram(fill="black") +
+  ggtitle("Duration distribution")
+
+# Good risk rate per Sex
+credit %>% 
+  group_by(Sex) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Sex,-avg_good),avg_good,fill=Sex)) +
   geom_col() +
   theme(axis.text.x = element_text(angle = 90)) +
-  xlab("Categories")
-
-# Country distribution
-kickstarter_ini %>% 
-  group_by(country) %>% 
-  summarize(n=n()) %>% 
-  arrange(desc(n)) %>%
-  ggplot(aes(reorder(country,-n),n,fill=country)) +
+  xlab("Sex") +
+  ggtitle("Good risk rate per Sex")
+# Good risk rate per Job
+credit %>% 
+  group_by(Job) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Job,-avg_good),avg_good,fill=Job)) +
   geom_col() +
   theme(axis.text.x = element_text(angle = 90)) +
-  scale_y_log10() +
-  xlab("Countries")
-
-# Success rate per category
-kickstarter_ini %>% 
-  group_by(main_category) %>% 
-  summarize(avg_suc = mean(success==1)) %>% 
-  arrange(desc(avg_suc)) %>%
-  top_n(20) %>% 
-  ggplot(aes(reorder(main_category,-avg_suc),avg_suc,fill=main_category)) +
+  xlab("Job") +
+  ggtitle("Good risk rate per Job")
+# Good risk rate per Housing
+credit %>% 
+  group_by(Housing) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Housing,-avg_good),avg_good,fill=Housing)) +
   geom_col() +
   theme(axis.text.x = element_text(angle = 90)) +
-  xlab("Categories")
-
-# Success rate per country
-kickstarter_ini %>% 
-  group_by(country) %>% 
-  summarize(avg_suc = mean(success==1)) %>% 
-  arrange(desc(avg_suc)) %>% 
-  ggplot(aes(reorder(country,-avg_suc),avg_suc,fill=country)) +
+  xlab("Housing") +
+  ggtitle("Good risk rate per Housing")
+# Good risk rate per Saving_accounts
+credit %>% 
+  group_by(Saving_accounts) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Saving_accounts,-avg_good),avg_good,fill=Saving_accounts)) +
   geom_col() +
   theme(axis.text.x = element_text(angle = 90)) +
-  xlab("Countries")
-
-# Goal distribution (goals which comprise >= 1000 projects)
-kickstarter_ini %>% 
-  mutate(goal_10k = round(goal_usd/10000)) %>% 
-  group_by(goal_10k) %>% 
-  summarize(n=n()) %>% 
-  filter(n>=1000) %>%
-  arrange(desc(n)) %>% 
-  ggplot(aes(goal_10k,n,fill=goal_10k)) +
+  xlab("Saving accounts") +
+  ggtitle("Good risk rate per Saving_accounts")
+# Good risk rate per Checking_account
+credit %>% 
+  group_by(Checking_account) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Checking_account,-avg_good),avg_good,fill=Checking_account)) +
   geom_col() +
-  theme(axis.text.x = element_text(angle = 90))
-xlab("Goals")
-
-# Success rate per goal amount
-kickstarter_ini %>% 
-  mutate(goal_10k = round(goal_usd/10000)) %>% 
-  group_by(goal_10k) %>% 
-  summarize(avg = mean(success==1)) %>%
-  ggplot(aes(goal_10k,avg)) +
-  scale_x_log10() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Checking account") +
+  ggtitle("Good risk rate per Checking_account")
+# Good risk rate per Credit_amount
+credit %>% 
+  mutate(amount_1k = round(Credit_amount/1000)) %>% 
+  group_by(amount_1k) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(amount_1k,-avg_good),avg_good,fill=amount_1k)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Credit amount (in k DM)") +
+  ggtitle("Good risk rate per Credit_amount")
+credit %>% 
+  mutate(amount_1k = round(Credit_amount/1000)) %>% 
+  group_by(amount_1k) %>% 
+  summarize(avg = mean(Risk=="good")) %>%
+  ggplot(aes(amount_1k,avg)) +
   geom_point() +
-  geom_smooth()
-
-# Success rate per duration (in months)
-kickstarter_ini %>% 
-  mutate(dur_months = round(duration/30)) %>% 
-  group_by(dur_months) %>% 
-  summarize(avg = mean(success==1)) %>%
-  ggplot(aes(dur_months,avg)) +
+  geom_smooth() +
+  ggtitle("Good risk rate per Credit_amount")
+# Good risk rate per Duration
+credit %>% 
+  group_by(Duration) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Duration,-avg_good),avg_good,fill=Duration)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Duration") +
+  ggtitle("Good risk rate per Duration")
+credit %>% 
+  group_by(Duration) %>% 
+  summarize(avg = mean(Risk=="good")) %>%
+  ggplot(aes(Duration,avg)) +
   geom_point() +
-  geom_smooth()
+  geom_smooth() +
+  ggtitle("Good risk rate per Duration")
+# Good risk rate per Purpose
+credit %>% 
+  group_by(Purpose) %>% 
+  summarize(avg_good = mean(Risk=="good")) %>% 
+  ggplot(aes(reorder(Purpose,-avg_good),avg_good,fill=Purpose)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Purpose") +
+  ggtitle("Good risk rate per Purpose")
 
-# Success rate per year
-kickstarter_ini %>% 
-  group_by(year) %>% 
-  summarize(avg = mean(success==1)) %>%
-  ggplot(aes(year,avg)) +
-  geom_point() +
-  geom_smooth()
 
-# Success rate per project name complexity
-kickstarter_ini %>% 
-  group_by(name_length) %>% 
-  summarize(avg = mean(success==1)) %>%
-  ggplot(aes(name_length,avg)) +
-  geom_point() +
-  geom_smooth()
+
 
 
 # Lineas temporales: exito por años, n. proyectos por años, categorias con mas proyectos por años,
@@ -208,40 +274,39 @@ kickstarter_ini %>%
 now()
 
 trainctrl <- trainControl(verboseIter = TRUE)
-# fit_glm <- train(success ~ main_category+country+goal_th+duration_months+name_complexity, 
-#                  method="glm", data = kickstarter_train, trControl = trainctrl)
 
-fit_glm <- train(success ~ main_category+country+goal_usd+year+duration+blurb_length +
-                   name_length+start_month+end_month+start_Q+end_Q,
-                 method="glm", data = kickstarter_train, trControl = trainctrl)
+# fit_glm <- train(Risk ~ .,
+#                  method="glm", data = credit_train, trControl = trainctrl)
 
-y_hat_glm <- predict(fit_glm, kickstarter_test, type = "raw")
+fit_glm <- train(Risk ~ Credit_amount+Duration,
+                 method="glm", data = credit_train, trControl = trainctrl)
 
-confusionMatrix(y_hat_glm,kickstarter_test$success)$overall[["Accuracy"]]
-confusionMatrix(y_hat_glm,kickstarter_test$success)
+y_hat_glm <- predict(fit_glm, credit_test, type = "raw")
+
+confusionMatrix(y_hat_glm,credit_test$Risk)$overall[["Accuracy"]]
+confusionMatrix(y_hat_glm,credit_test$Risk)
 
 now()
 
-Accuracy : 0.6917
+Accuracy : 0.69
 
 #------------------------
 ### Decision tree
 #------------------------
 now()
 
-fit_rpart <- train(success ~ main_category+country+goal_usd+year+duration+blurb_length +
-                     name_length+start_month+end_month+start_Q+end_Q, 
-                   data = kickstarter_train,method="rpart",
+fit_rpart <- train(Risk ~ ., 
+                   data = credit_train,method="rpart",
                    tuneGrid = data.frame(cp = seq(0, 0.05, 0.002)), trControl = trainctrl)
 
 ggplot(fit_rpart)
 fit_rpart$bestTune
 
 # Predicción y evaluación
-confusionMatrix(predict(fit_rpart, kickstarter_test, type = "raw"),
-                kickstarter_test$success)$overall["Accuracy"]
-confusionMatrix(predict(fit_rpart, kickstarter_test, type = "raw"),
-                kickstarter_test$success)
+confusionMatrix(predict(fit_rpart, credit_test, type = "raw"),
+                credit_test$Risk)$overall["Accuracy"]
+confusionMatrix(predict(fit_rpart, credit_test, type = "raw"),
+                credit_test$Risk)
 
 # Visualización del árbol
 plot(fit_rpart$finalModel, margin = 0.1)
@@ -249,7 +314,7 @@ text(fit_rpart$finalModel, cex = 0.75)
 
 now()
 
-Accuracy : 0.7013
+Accuracy : 0.68
 
 
 #------------------------
@@ -260,32 +325,26 @@ Accuracy : 0.7013
 
 now()
 
-trainctrl <- trainControl(verboseIter = TRUE, number = 10)
-
-# Limpieza
-rm(dl,kickstarter_ini,kickstarter_test)
+trainctrl <- trainControl(verboseIter = TRUE, number = 25)
 
 # Ajuste de parámetros
-fit_rf <- train(success ~ main_category+country+goal_usd+year+duration+blurb_length +
-                  name_length+start_month+end_month+start_Q+end_Q
-                , data = kickstarter_train,method="rf",
-                tuneGrid = data.frame(mtry = seq(1,15)),ntree=200, trControl = trainctrl)
+fit_rf <- train(Risk ~ .
+                , data = credit_train,method="rf",
+                tuneGrid = data.frame(mtry = seq(1,15)),ntree=1000, trControl = trainctrl)
 
 print(fit_rf)
 ggplot(fit_rf)
 fit_rf$bestTune
-
-kickstarter_test <- kickstarter[test_index, ]
 
 # Estimación de la importancia de las variables
 imp <- varImp(fit_rf)
 imp
 
 # Predicción y evaluación
-confusionMatrix(predict(fit_rf, kickstarter_test, type = "raw"),
-                kickstarter_test$success)$overall["Accuracy"]
-confusionMatrix(predict(fit_rf, kickstarter_test, type = "raw"),
-                kickstarter_test$success)
+confusionMatrix(predict(fit_rf, credit_test, type = "raw"),
+                credit_test$Risk)$overall["Accuracy"]
+confusionMatrix(predict(fit_rf, credit_test, type = "raw"),
+                credit_test$Risk)
 
 now()
 
@@ -325,13 +384,38 @@ now()
 
 now()
 # Set up Repeated k-fold Cross Validation
-train_control <- trainControl(method="repeatedcv", number=1, repeats=3, verboseIter = TRUE)
+train_control <- trainControl(method="repeatedcv", number=10, repeats=3, verboseIter = TRUE)
 
 # Fit the model 
-svm1 <- train(success ~ main_category+country+goal_usd+year+duration+blurb_length +
-                name_length+start_month+end_month+start_Q+end_Q, data = kickstarter_train, 
-              method = "svmLinear", trControl = train_control))
+svm1 <- train(Risk ~ ., data = credit_train, 
+              method = "svmLinear", trControl = train_control)
 #View the model
 svm1
+
+now()
+
+
+
+
+now()
+
+
+
+control <- trainControl(method = "cv", number = 10, p = .9, verboseIter = TRUE)
+
+train_knn_cv <- train(Risk ~ ., method = "knn", 
+                      data = credit_train,
+                      tuneGrid = data.frame(k = seq(3, 51, 2)),
+                      trControl = control)
+
+
+# Observamos cuál es el parámetro más óptimo
+ggplot(train_knn_cv)
+train_knn_cv$bestTune
+
+
+confusionMatrix(predict(train_knn_cv, credit_test, type = "raw"),
+                credit_test$Risk)$overall["Accuracy"]
+
 
 now()
