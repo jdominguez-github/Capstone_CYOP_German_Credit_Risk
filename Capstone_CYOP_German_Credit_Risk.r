@@ -453,13 +453,9 @@ text(fit_dt$finalModel, cex = 0.75)
 #------------------------
 ### Random forest
 #------------------------
-# Please note that this code takes a substantial amount of time to run
+# Warning: Please note that this code takes a substantial amount of time to execute
 
-# trainctrl <- trainControl(number = 25)
-
-trainctrl <- trainControl(method='repeatedcv', 
-                        number=10, 
-                        repeats=3)
+trainctrl <- trainControl(number = 10)
 
 # Parameters (mtry) fit. ntree parameter is set at a fixed value of 1000
 fit_rf <- train(Risk ~ .

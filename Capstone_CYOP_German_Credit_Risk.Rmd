@@ -721,7 +721,7 @@ All models are trained and parameters fitted by using the functions included in 
 
 ### Model 1: Logistic regresion
 
-Logistic regression is a very common algorithm used for binary classification problems although it can be applied in many other cases. 
+Logistic regression is an algorithm used very commonly for binary classification problems although it can be applied in many other cases. 
 
 In this case, considering the apparent high correlation between some predictors and the outcome, the first approach will be to apply a logistic regression model to the data.
 
@@ -806,10 +806,14 @@ Let's see if bagging multiple decision trees by using Random forest can improve 
 Parameter *mtry* will be optimized by using cross-validation with the train() function. Parameter *ntree* will be set at a fixed value of 1000.
 
 ```{r rf1, message = FALSE, error = FALSE,  warning = FALSE}
-#Parameters (mtry) fit. ntree parameter is set at a fixed value of 1000
+# Warning: Please note that this code takes a substantial amount of time to execute
+
+trainctrl <- trainControl(number = 10)
+
+# Parameters (mtry) fit. ntree parameter is set at a fixed value of 1000
 fit_rf <- train(Risk ~ .
                 , data = credit_train,method="rf",
-                tuneGrid = data.frame(mtry = seq(1,15)),ntree=1000)
+                tuneGrid = data.frame(mtry = seq(1,15)),ntree=1000, trControl = trainctrl)
 ```
 
 Optimal *mtry* parameter for Random forest
