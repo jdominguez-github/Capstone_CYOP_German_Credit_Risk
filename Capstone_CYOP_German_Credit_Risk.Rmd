@@ -1,5 +1,5 @@
 ---
-title: " Data Science: Capstone HarvardX - PH125.9x - CYOP - Kickstarter project success predictor"
+title: " Data Science: Capstone HarvardX - PH125.9x - CYOP - Credit risk profile predictor"
 author: "Javier Dominguez Lopez"
 date: "25/11/2020"
 output: pdf_document
@@ -19,14 +19,14 @@ The first project consists in the design, build, training and evaluation of a Ma
 
 The second project is a Choose-Your-Own-Project where students can decide which kind of challenge they want to deal with and which methods and algorithms they're going to use to solve the problem.
 
-In this case, the CYO project consists of an algorithm which predicts the success or failure of kickstarter campaigns given some variables such as the goal amount to be raised or the country of origin of the project.
+In the case of this report, the CYO project consists in training an optimal algorithm which is able to assign a credit risk profile to bank customers given certain features such as the amount and duration of the credit or the education level of the client.
 
 This document is structured as follows:
 
 + Introduction
 + Overview
 + Data Ingestion
-+ Data pre-procession
++ Data pre-processing
 + Dataset exploratory analysis
 + Model build, training, testing and evaluation.
 + Conclusion
@@ -34,723 +34,891 @@ This document is structured as follows:
 
 # Overview
 
-As explained above, the target of this project is to build an algorithm able to make movie recommendations to users. For this purpose a subset of the Movielens dataset composed of 10 Million observations will be used to train, test and validate the algorithm.
+As explained above, the target of this project is to build an algorithm able to assign a credit risk profile "good" or "bad" to clients of a bank based on both personal and financial attributes.
 
-The 10 Million version of the Movielens dataset can be found here:
+For this purpose a dataset composed of 1000 observations will be used to train, test and validate the algorithm.
 
-+ MovieLens 10M dataset <https://grouplens.org/datasets/movielens/10m/>
-+ MovieLens 10M dataset (zip) <http://files.grouplens.org/datasets/movielens/ml-10m.zip>
+The original dataset used in this project has been downloaded from
 
-The algorithm will be developed taking into account different variables (average rating, movie bias, user bias, etc.) and using different approaches to determine which one provides the best performance. The resulting model should be able to predict movie ratings for any new movie and user.
++ Statlog (German Credit Data) Data Set <https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/>
 
-RMSE will be used as the loss function to evaluate algorithms' estimations
+The algorithm will be developed taking into account the different variables and using different approaches to determine which one provides the best performance. The resulting model should be able to predict a credit risk profile ("good" or "bad") for any new bank customer.
 
-In this project 5 models will be trained and tested, resulting in a RMSE value which will provide an idea of how good the algorithm is at estimating ratings for movies. 
+Accuracy will be used as the metric to evaluate algorithms' estimations although F1-scores will also be calculated for all models.
 
-The model with the best RMSE will then be evaluated against the validation set to check how good its predictions are when applied to an external dataset.
+In this project 5 models will be trained and tested, resulting in an Accuracy value which will provide an idea of how good the algorithm is at estimating credit risk profiles. 
 
+The models which will be tested are:
+
++ Logistic regresion
++ Decision tree
++ Random forest
++ SVM
++ kNN   
+
+The model with the best Accuracy will be chosen as the optimal model for this project.
+
+\pagebreak
 
 # Methods and analysis
 
 ## Data Ingestion
 
-The code which takes care of data ingestion is provided to students as part of the edx's Project Overview: 
-
-https://learning.edx.org/course/course-v1:HarvardX+PH125.9x+2T2020/block-v1:HarvardX+PH125.9x+2T2020+type@sequential+block@e8800e37aa444297a3a2f35bf84ce452/block-v1:HarvardX+PH125.9x+2T2020+type@vertical+block@e9abcdd945b1416098a15fc95807b5db
+This is the code which takes care of data ingestion: 
 
 ```{r data_ingestion, message = FALSE, error = FALSE,  warning = FALSE}
-##########################################################
-# Create edx set, validation set (final hold-out test set)
-##########################################################
-
-# Note: this process could take a couple of minutes
-
+### Data ingestion ###
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
 if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate")
+if(!require(randomForest)) install.packages("randomForest")
 
 library(tidyverse)
 library(caret)
 library(data.table)
-
-# MovieLens 10M dataset:
-# https://grouplens.org/datasets/movielens/10m/
-# http://files.grouplens.org/datasets/movielens/ml-10m.zip
+library(lubridate)
+library(randomForest)
 
 dl <- tempfile()
-download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+download.file("https://github.com/jdominguez-github/Capstone_CYOP_German_Credit_Risk/raw/master/german.data",dl)
 
-ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
-                 col.names = c("userId", "movieId", "rating", "timestamp"))
+credit <- fread(text = gsub(" ", ",", readLines(dl)),
+                 col.names = c("Checking_acc_status","Duration","Credit_history","Purpose","Credit_amount","Savings_account",
+                               "Current_empl_dur","Installment_rate","Personal_status_Sex","Other_debtors_guarantors",
+                               "Residence_since","Property","Age","Other_installment_plans","Housing","N_credits",
+                               "Job","N_dependant_people","Telephone","Foreign","Risk"))
 
-movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
-colnames(movies) <- c("movieId", "title", "genres")
+# Split credit data set into training set (80%) and test set (20%)
+set.seed(1, sample.kind="Rounding")
+test_index <- createDataPartition(credit$Risk,1,0.2,list=FALSE)
 
-# if using R 4.0 or later:
-movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(movieId),
-                                           title = as.character(title),
-                                           genres = as.character(genres))
-
-
-movielens <- left_join(ratings, movies, by = "movieId")
-
-# Validation set will be 10% of MovieLens data
-set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
-test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
-edx <- movielens[-test_index,]
-temp <- movielens[test_index,]
-
-# Make sure userId and movieId in validation set are also in edx set
-validation <- temp %>% 
-  semi_join(edx, by = "movieId") %>%
-  semi_join(edx, by = "userId")
-
-# Add rows removed from validation set back into edx set
-removed <- anti_join(temp, validation)
-edx <- rbind(edx, removed)
-
-rm(dl, ratings, movies, test_index, temp, movielens, removed)
+credit_test <- credit[test_index, ]
+credit_train <- credit[-test_index, ]
 ```
 
+By executing this code chunk we'll end up with a full data set calle "credit" which is split into a training data set called "credit_train" and a test data set called "credit_test".
 
-By executing this code chunk we'll end up with a train+test dataset called "edx" and a validation dataset called "validation".
 
-The edx dataset will be further split into train and test datasets for training and testing purposes whereas the validation dataset will remain unused until we have a winner model whose performance we'll test using this validation dataset.
+## Data pre-processing
 
-With the initial loading of data complete, we can now take a look at the basic structure and stats of the data.
+The original data set (credit) uses a codification for its variable values which makes its interpretation very hard. For this reason, a process of translation will be applied so as to create an alternative data set ("credit_trans") with more descriptive column values which will be used for exploratory analysis.
+
+This is the original codified data description as provided in the UCI site:
+
+### Original dataset codification
+
+* Attribute 1:  (qualitative) - Status of existing checking account
+  + A11 : ... < 0 DM
+  + A12 : 0 <= ... < 200 DM
+  + A13 : ... >= 200 DM / salary assignments for at least 1 year
+  + A14 : no checking account
+* Attribute 2:  (numerical) - Duration in month
+
+* Attribute 3:  (qualitative) - Credit history
+  + A30 : no credits taken/all credits paid back duly
+  + A31 : all credits at this bank paid back duly
+  + A32 : existing credits paid back duly till now
+  + A33 : delay in paying off in the past
+  + A34 : critical account/other credits existing (not at this bank)
+* Attribute 4:  (qualitative) - Purpose
+  + A40 : car (new)
+  + A41 : car (used)
+  + A42 : furniture/equipment
+  + A43 : radio/television
+  + A44 : domestic appliances
+  + A45 : repairs
+  + A46 : education
+  + A47 : (vacation - does not exist?)
+  + A48 : retraining
+  + A49 : business
+  + A410 : others
+* Attribute 5:  (numerical) - Credit amount
+* Attibute 6:  (qualitative) - Savings account/bonds
+  + A61 : ... < 100 DM
+  + A62 : 100 <= ... < 500 DM
+  + A63 : 500 <= ... < 1000 DM
+  + A64 : .. >= 1000 DM
+  + A65 : unknown/ no savings account
+* Attribute 7:  (qualitative) - Present employment since
+  + A71 : unemployed
+  + A72 : ... < 1 year
+  + A73 : 1  <= ... < 4 years  
+  + A74 : 4  <= ... < 7 years
+  + A75 : .. >= 7 years
+* Attribute 8:  (numerical) - Installment rate in percentage of disposable income
+* Attribute 9:  (qualitative) - Personal status and sex
+  + A91 : male   : divorced/separated
+  + A92 : female : divorced/separated/married
+  + A93 : male   : single
+  + A94 : male   : married/widowed
+  + A95 : female : single
+* Attribute 10: (qualitative) - Other debtors / guarantors
+  + A101 : none
+  + A102 : co-applicant
+  + A103 : guarantor
+* Attribute 11: (numerical) - Present residence since
+* Attribute 12: (qualitative) - Property
+  + A121 : real estate
+  + A122 : if not A121 : building society savings agreement/life insurance
+  + A123 : if not A121/A122 : car or other, not in attribute 6
+  + A124 : unknown / no property
+* Attribute 13: (numerical) - Age in years
+* Attribute 14: (qualitative) - Other installment plans 
+  + A141 : bank
+  + A142 : stores
+  + A143 : none
+* Attribute 15: (qualitative) - Housing
+  + A151 : rent
+  + A152 : own
+  + A153 : for free
+* Attribute 16: (numerical) - Number of existing credits at this bank
+* Attribute 17: (qualitative) - Job
+  + A171 : unemployed/ unskilled  - non-resident
+  + A172 : unskilled - resident
+  + A173 : skilled employee / official
+  + A174 : management/ self-employed/ highly qualified employee/ officer
+* Attribute 18: (numerical) - Number of people being liable to provide maintenance for
+* Attribute 19: (qualitative) - Telephone
+  + A191 : none
+  + A192 : yes, registered under the customers name
+* Attribute 20: (qualitative) - foreign worker
+  + A201 : yes
+  + A202 : no
+
+### Feature translation process
+
+This is the code that carries out column codes translation:
+
+```{r data_preprocessing, message = FALSE, error = FALSE,  warning = FALSE}
+### Data pre-processing
+
+# Translate original data set codes into something more descriptive for exploratory analysis
+
+credit_trans <- credit
+
+# Checking_acc_status
+credit_trans[credit$Checking_acc_status == "A11"]$Checking_acc_status <- "0"
+credit_trans[credit$Checking_acc_status == "A12"]$Checking_acc_status <- "0-200"
+credit_trans[credit$Checking_acc_status == "A13"]$Checking_acc_status <- ">200"
+credit_trans[credit$Checking_acc_status == "A14"]$Checking_acc_status <- "No account"
+
+# Credit_history
+credit_trans[credit$Credit_history == "A30"]$Credit_history <- "No credit/Duly paid at other banks"
+credit_trans[credit$Credit_history == "A31"]$Credit_history <- "Duly paid at this bank"
+credit_trans[credit$Credit_history == "A32"]$Credit_history <- "Existing credit duly paid at this bank"
+credit_trans[credit$Credit_history == "A33"]$Credit_history <- "Payment delay in the past"
+credit_trans[credit$Credit_history == "A34"]$Credit_history <- "Critical account/Credit at other banks"
+
+# Purpose
+credit_trans[credit$Purpose == "A40"]$Purpose <- "car (new)"
+credit_trans[credit$Purpose == "A41"]$Purpose <- "car (used)"
+credit_trans[credit$Purpose == "A42"]$Purpose <- "furniture/equipment"
+credit_trans[credit$Purpose == "A43"]$Purpose <- "radio/television"
+credit_trans[credit$Purpose == "A44"]$Purpose <- "domestic appliances"
+credit_trans[credit$Purpose == "A45"]$Purpose <- "repairs"
+credit_trans[credit$Purpose == "A46"]$Purpose <- "education"
+credit_trans[credit$Purpose == "A47"]$Purpose <- "vacation"
+credit_trans[credit$Purpose == "A48"]$Purpose <- "retraining"
+credit_trans[credit$Purpose == "A49"]$Purpose <- "business"
+credit_trans[credit$Purpose == "A410"]$Purpose <- "others"
+
+# Savings_account
+credit_trans[credit$Savings_account == "A61"]$Savings_account <- "<100"
+credit_trans[credit$Savings_account == "A62"]$Savings_account <- "100-500"
+credit_trans[credit$Savings_account == "A63"]$Savings_account <- "501-1000"
+credit_trans[credit$Savings_account == "A64"]$Savings_account <- ">1000"
+credit_trans[credit$Savings_account == "A65"]$Savings_account <- "Unknown/No account"
+
+# Current_empl_dur
+credit_trans[credit$Current_empl_dur == "A71"]$Current_empl_dur <- "Unemployed"
+credit_trans[credit$Current_empl_dur == "A72"]$Current_empl_dur <- "<1y"
+credit_trans[credit$Current_empl_dur == "A73"]$Current_empl_dur <- "1y-4y"
+credit_trans[credit$Current_empl_dur == "A74"]$Current_empl_dur <- "4y-7y"
+credit_trans[credit$Current_empl_dur == "A75"]$Current_empl_dur <- ">7y"
+
+# Personal_status_Sex
+# New Personal_status feature
+credit_trans <- credit_trans %>% mutate(Personal_status="")
+credit_trans <- credit_trans %>% mutate(Sex="")
+
+credit_trans[credit$Personal_status_Sex == "A91"]$Personal_status <- "divorced/separated"
+credit_trans[credit$Personal_status_Sex == "A92"]$Personal_status <- "divorced/separated/married"
+credit_trans[credit$Personal_status_Sex == "A93"]$Personal_status <- "single"
+credit_trans[credit$Personal_status_Sex == "A94"]$Personal_status <- "married/widowed"
+credit_trans[credit$Personal_status_Sex == "A95"]$Personal_status <- "single"
+# New Sex feature
+credit_trans[credit$Personal_status_Sex == "A91"]$Sex <- "male"
+credit_trans[credit$Personal_status_Sex == "A92"]$Sex <- "female"
+credit_trans[credit$Personal_status_Sex == "A93"]$Sex <- "male"
+credit_trans[credit$Personal_status_Sex == "A94"]$Sex <- "male"
+credit_trans[credit$Personal_status_Sex == "A95"]$Sex <- "female"
+
+credit_trans <- credit_trans %>% select(-Personal_status_Sex)
+
+# Other_debtors_guarantors
+credit_trans[credit$Other_debtors_guarantors == "A101"]$Other_debtors_guarantors <- "none"
+credit_trans[credit$Other_debtors_guarantors == "A102"]$Other_debtors_guarantors <- "co-applicant"
+credit_trans[credit$Other_debtors_guarantors == "A103"]$Other_debtors_guarantors <- "guarantor"
+
+# Property
+credit_trans[credit$Property == "A121"]$Property <- "real estate"
+credit_trans[credit$Property == "A122"]$Property <- "building society savings agreement/life insurance"
+credit_trans[credit$Property == "A123"]$Property <- "car or other"
+credit_trans[credit$Property == "A124"]$Property <- "unknown / no property"
+
+# Other_installment_plans
+credit_trans[credit$Other_installment_plans == "A141"]$Other_installment_plans <- "bank"
+credit_trans[credit$Other_installment_plans == "A142"]$Other_installment_plans <- "stores"
+credit_trans[credit$Other_installment_plans == "A143"]$Other_installment_plans <- "none"
+
+# Housing
+credit_trans[credit$Housing == "A151"]$Housing <- "rent"
+credit_trans[credit$Housing == "A152"]$Housing <- "own"
+credit_trans[credit$Housing == "A153"]$Housing <- "for free"
+
+# Job
+credit_trans[credit$Job == "A171"]$Job <- "unemployed/unskilled - NR"
+credit_trans[credit$Job == "A172"]$Job <- "unemployed/unskilled - R"
+credit_trans[credit$Job == "A173"]$Job <- "skilled/official"
+credit_trans[credit$Job == "A174"]$Job <- "management/self-employed/highly qualified/officer"
+
+# Telephone
+credit_trans[credit$Telephone == "A191"]$Telephone <- "no"
+credit_trans[credit$Telephone == "A192"]$Telephone <- "yes"
+
+# Foreign
+credit_trans[credit$Foreign == "A201"]$Foreign <- "yes"
+credit_trans[credit$Foreign == "A202"]$Foreign <- "no"
+
+# Risk_profile
+credit_trans <- credit_trans %>% mutate(Risk_profile="")
+
+credit_trans[credit$Risk == "1"]$Risk_profile <- "good"
+credit_trans[credit$Risk == "2"]$Risk_profile <- "bad"
+
+# Convert categorical features into factor
+credit_trans$Checking_acc_status <- factor(credit_trans$Checking_acc_status)
+credit_trans$Credit_history <- factor(credit_trans$Credit_history)
+credit_trans$Purpose <- factor(credit_trans$Purpose)
+credit_trans$Savings_account  <- factor(credit_trans$Savings_account )
+credit_trans$Current_empl_dur <- factor(credit_trans$Current_empl_dur)
+credit_trans$Other_debtors_guarantors <- factor(credit_trans$Other_debtors_guarantors)
+credit_trans$Property <- factor(credit_trans$Property)
+credit_trans$Other_installment_plans <- factor(credit_trans$Other_installment_plans)
+credit_trans$Housing <- factor(credit_trans$Housing)
+credit_trans$Job <- factor(credit_trans$Job)
+credit_trans$Telephone <- factor(credit_trans$Telephone)
+credit_trans$Foreign <- factor(credit_trans$Foreign)
+credit_trans$Personal_status <- factor(credit_trans$Personal_status)
+credit_trans$Sex <- factor(credit_trans$Sex)
+
+# Convert outcome features into factor
+credit_trans$Risk_profile = factor(credit_trans$Risk_profile)
+credit$Risk = factor(credit$Risk)
+credit_test$Risk = factor(credit_test$Risk)
+credit_train$Risk = factor(credit_train$Risk)
+```
+
+The original codified data set "credit" will be used for model implementation and the translated data set "credit_trans" will be used for exploratory analysis.
 
 
 ## Data summary
 
-When looking at the general structure of the dataset we can see it consists of 9,000,055 observations and 6 variables.
+With the initial loading and pre-processing of data complete, we can now take a look at the basic structure and stats of the data.
 
-We can see the summary statistics of the dataset as well as a sample displaying the first 10 rows.
+When looking at the general structure of the original data set we can see it consists of 1,000 observations and 21 variables of which, "Risk", is the outcome and the rest are features which can be used as potential predictors.
 
-``` {r data_summary1, message = FALSE, error = FALSE,  warning = FALSE}
-### edx dataset overview ### 
-# General structure of the dataset
-str(edx)
-# Summary stats
-summary(edx)
-# Sample of first 10 rows
-head(edx)
+Risk is a factor variable with 2 levels: "good" and "bad" representing the two possible credit risk profiles that can be assigned to a client and that will be predicted by the algorithm.
+
+We can see the summary statistics as well as a sample displaying the first 10 rows of both the original credit data set and the translated "credit_trans" data set which has the same amount of rows as it's only a translated version of the original one.
+
+
+### Data overview: Original "credit" data set
+
+``` {r data_summary_credit, message = FALSE, error = FALSE,  warning = FALSE}
+# Overview of original credit dataset
 # Total number of rows
-c("Number of ratings" = nrow(edx))
+c("Number of users" = nrow(credit))
+# General structure
+str(credit)
+# Summary stats
+summary(credit)
+# Sample of first few rows
+head(credit)
 ```
 
 
-## Data pre-processing
+### Data overview: Translated "credit_trans" data set
 
-Before we start working with the dataset the following pre-processing tasks will be carried out:
-
-+ Convert timestamp variable to datetime type and create new "date" variable to store the converted value.
-+ Extract year of rating from the new date column and create new year_rating to store the value.
-+ Extract year of release for each movie from the title column and create new year_release to store the value.
-+ Split edx dataset into two separated datasets for training and testing: edx_train (80%) and edx_test (20%).
-
-```{r data_preprocessing, message = FALSE, error = FALSE,  warning = FALSE}
-## Data pre-processing
-# Loading of other required libraries
-library(lubridate)
-
-# Create date column (datetime type timestamp)
-edx <- edx %>% mutate(date = as_datetime(timestamp))
-validation <- validation %>% mutate(date = as_datetime(timestamp))
-
-# Extract year of rating and create new year_rating column in edx dataset
-edx <- edx %>% 
-  mutate(year_rating = year(edx$date))
-
-# Extract year of rating and create new year_rating column in validation dataset
-validation <- validation %>% 
-  mutate(year_rating = year(validation$date))
-
-# Extract year of release and create new year_release column in edx dataset
-edx <- edx %>% 
-  mutate(year_release = str_extract(edx$title,"\\(\\d{4}\\)$") %>% 
-           str_replace("\\(","")  %>% 
-           str_replace("\\)",""))
-
-# Extract year of release and create new year_release column in validation dataset
-validation <- validation %>% 
-  mutate(year_release = str_extract(validation$title,"\\(\\d{4}\\)$") %>% 
-           str_replace("\\(","")  %>% 
-           str_replace("\\)",""))
-
-# Split edx data set into training set (70%) and test set (30%)
-test_index <- createDataPartition(edx$rating,1,0.2,list=FALSE)
-edx_test <- edx[test_index, ]
-edx_train <- edx[-test_index, ]
-
-# Make sure userId and movieId in test set are also in train set
-edx_test <- edx_test %>% 
-  semi_join(edx_train, by = "movieId") %>%
-  semi_join(edx_train, by = "userId")
-
+```{r data_summary_credit_trans, message = FALSE, error = FALSE,  warning = FALSE}
+# Overview of the dataset with translated variables
+# General structure
+str(credit_trans)
+# Summary stats
+summary(credit_trans)
+# Sample of first few rows
+head(credit_trans)
 ```
+
 \pagebreak
 
 ## Data exploratory analysis
 
-### Number of different movies and users in the edx dataset:
+### General information
 
-```{r number_movies_users, echo=FALSE, message = FALSE, error = FALSE,  warning = FALSE}
-c("Movies"=length(unique(edx$movieId)),"Users"=length(unique(edx$userId)))
+Number of credit risk profiles categorized as "good" / "bad"
+```{r number_credit_profiles, echo=FALSE, message = FALSE, error = FALSE,  warning = FALSE}
+cont_risk <- table(credit_trans$Risk_profile)
+cont_risk
 ```
 
-```{r rating_dist_per_movie, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(movieId) %>% 
-  summarize(n=n()) %>% 
-  ggplot(aes(n)) + 
-  geom_histogram(binwidth = 0.1) +
-  scale_x_log10() +
-  ggtitle("Rating distribution per movie")
+Proportion of credit risk profiles categorized as "good"
+```{r prop_good_profiles, echo=FALSE, message = FALSE, error = FALSE,  warning = FALSE}
+c("Proportion of \"good\" credit risk profiles" = mean(credit_trans$Risk_profile=="good"))
 ```
 
-We can see that some movies get a high number of ratings while others receive only a few ratings from users. 
+70% of the profiles have been categorized as "good" and 30% have been categorized as "bad". To visualize this, here's a plot of the proportion of good vs bad profiles
 
-This suggests the need for regularization as we know that uncertainty grows for estimations originated from few ratings. In this context, large estimations are more likely for movies with few ratings and this effect needs to be compensated by penalizing such estimations.
-
-\pagebreak
-
-```{r avg_rating_per_movie, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(movieId) %>% 
-  summarize(b_i = mean(rating)) %>% 
-  filter(n()>=100) %>%
-  ggplot(aes(b_i)) + 
-  geom_histogram(bins = 30, color = "black") +
-  ggtitle("Average rating per movie for movies with > 100 ratings (movie bias)")
-```
-
-We can observe a high amount of Movie variability as some movies tend to receive better rates from all users than others.
-
-This means we'll need to address this variance with a model which accounts for movie variability.
-
-\pagebreak
-
-```{r rating_dist_user, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(userId) %>% 
-  summarize(n=n()) %>% 
-  ggplot(aes(n)) + 
-  geom_histogram(binwidth = 0.1) +
-  scale_x_log10() +
-  ggtitle("Rating distribution per user")
-```
-
-We can see that some users are very active and provide a high number of ratings while others only rate few movies.
-
-\pagebreak
-
-```{r avg_rating_user, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(userId) %>% 
-  summarize(b_u = mean(rating)) %>% 
-  filter(n()>=100) %>%
-  ggplot(aes(b_u)) + 
-  geom_histogram(bins = 30, color = "black") +
-  ggtitle("Average rating per user for users with > 100 ratings (user bias)")
-```
-
-We see a certain amount of User variability: some users tend to rate high whereas others usually rate lower on a regular basis.
-
-We need a model which takes into account user variability so as to compensate the high-rating or low-rating profile of users which will tend to rate higher or lower than the average.
-
-\pagebreak
-
-```{r rating_dist, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(rating) %>% 
-  ggplot(aes(rating)) + 
-  geom_histogram(bins=10) +
-  ggtitle("Rating distribution")
-```
-
-Values within the range 3-4 are more common than more extreme values.
-
-\pagebreak
-
-```{r rating_dist_year_rt, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(year_rating) %>% 
-  ggplot(aes(year_rating)) + 
-  geom_histogram() +
-  ggtitle("Rating distribution per year of rating")
+```{r risk_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Credit risk distribution
+cont_succ <- table(credit_trans$Risk_profile)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Risk") +
+  ggtitle("Credit risk distribution")
 ```
 
 \pagebreak
 
-```{r rating_dist_year_rl, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(yr = as.numeric(year_release)) %>% 
-  ggplot(aes(yr)) + 
-  geom_histogram() +
-  ggtitle("Rating distribution per year of movie release")
+Number of male/female customers
+
+```{r number_sex, echo=FALSE, message = FALSE, error = FALSE,  warning = FALSE}
+cont_sex <- table(credit_trans$Sex)
+cont_sex
+```
+
+```{r sex_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Sex distribution
+cont_succ <- table(credit_trans$Sex)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Sex") +
+  ggtitle("Sex distribution")
+```
+
+The number of male credit clients is approximately double than the number of female credit clients.
+
+\pagebreak
+
+```{r job_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Job distribution
+cont_succ <- table(credit_trans$Job)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Job") +
+  ggtitle("Job distribution") +
+  theme(axis.text.x = element_text(angle = 90))
 ```
 
 \pagebreak
 
-```{r rating_vS_year_rt, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(year_rating) %>% 
-  summarize(avg_r = mean(rating)) %>% 
-  ggplot(aes(year_rating,avg_r)) + 
-  geom_point() + 
+```{r housing_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Housing distribution
+cont_succ <- table(credit_trans$Housing)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Housing") +
+  ggtitle("Housing distribution")
+```
+
+Most credit clients are skilled workers.
+
+\pagebreak
+
+```{r svg_acc_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Savings account distribution
+cont_succ <- table(credit_trans$Savings_account)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Savings account") +
+  ggtitle("Savings account distribution") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+A majority of credit clients are owners of their house
+
+\pagebreak
+
+```{r purpose_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Purpose distribution
+cont_succ <- table(credit_trans$Purpose)
+data.frame(cont_succ) %>% 
+  ggplot(aes(x= reorder(Var1,-Freq),Freq,fill=Var1)) +
+  geom_bar(stat ="identity") +
+  xlab("Purpose") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ggtitle("Purpose distribution")
+```
+
+\pagebreak
+
+```{r age_dist, message = FALSE, error = FALSE,  warning = FALSE}
+# Age distribution
+credit_trans %>% ggplot(aes(Age)) + 
+  geom_histogram(aes(y=..density..),col="red",fill="blue",alpha=.2) +
+  ggtitle("Age distribution") + 
+  geom_vline(aes(xintercept=mean(Age)),color="blue", linetype="dashed", size=1)+
+  geom_density(alpha=.2) 
+```
+
+\pagebreak
+
+```{r amount_dist, message = FALSE, error = FALSE,  warning = FALSE}
+# Credit amount distribution
+credit_trans %>% ggplot(aes(Credit_amount)) + 
+  geom_histogram(aes(y=..density..),col="red",fill="red",alpha=.2) +
+  ggtitle("Credit amount distribution") + 
+  geom_vline(aes(xintercept=mean(Credit_amount)),color="blue", linetype="dashed", size=1)+
+  geom_density(alpha=.2) 
+```
+
+\pagebreak
+
+```{r duration_dist, message = FALSE, error = FALSE,  warning = FALSE}
+# Duration distribution
+credit_trans %>% ggplot(aes(Duration)) + 
+  geom_histogram(aes(y=..density..),col="red",fill="green",alpha=.2) +
+  ggtitle("Duration distribution") + 
+  geom_vline(aes(xintercept=mean(Duration)),color="blue", linetype="dashed", size=1)+
+  geom_density(alpha=.2) 
+```
+
+\pagebreak
+
+Features correlation check
+
+```{r age_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Age boxplot
+credit_trans %>% ggplot(aes(Risk_profile,Age,fill=Risk_profile,alpha=.5)) + 
+  geom_boxplot() +
+  ggtitle("Age boxplot") +
+  xlab("Risk profile")
+```
+
+\pagebreak
+
+```{r age_lines, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Age
+credit_trans %>% 
+  group_by(Age) %>% 
+  summarize(avg = mean(Risk_profile=="good")) %>%
+  ggplot(aes(Age,avg)) +
+  geom_point() +
   geom_smooth() +
-  ggtitle("Rating vs year of rating")
+  ggtitle("Quality of profiles by Age") +
+  ylab("Average of \"good\" risk profiles")
 ```
 
-We can observe that users give lower ratings over time: more recent ratings are lower than older ones. 
-
-The year when the rating was given by the user needs to be taken into account in our model.
+The two plots above show there's a correlation between age and risk profile quality. The older the client the higher the chance for them to have a good risk profile. One could expect this as we can make the assumption that older clients will have a more stable economic situation than younger ones.
 
 \pagebreak
 
-```{r rating_vS_year_rl, message = FALSE, error = FALSE,  warning = FALSE}
-edx %>% 
-  group_by(yr=as.numeric(year_release)) %>% 
-  summarize(avg_r = mean(rating)) %>% 
-  ggplot(aes(yr,avg_r)) + 
-  geom_point() + 
-  geom_smooth() +
-  ggtitle("Rating vs release year")
+
+```{r amount_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Credit amount boxplot
+credit_trans %>% ggplot(aes(Risk_profile,Credit_amount,fill=Risk_profile,alpha=.5)) + 
+  geom_boxplot() +
+  ggtitle("Credit amount boxplot") +
+  xlab("Risk profile")
 ```
 
-Movies released between 1930 and 1970 are rated higher in general. 
+\pagebreak
 
-The year when the movie was released needs to be taken into account in our model.
+```{r amount_bars, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Credit_amount (bars)
+credit_trans %>% 
+  mutate(amount_1k = round(Credit_amount/1000)) %>% 
+  group_by(amount_1k) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(amount_1k,-avg_good),avg_good,fill=amount_1k)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Credit amount (in k DM)") +
+  ggtitle("Quality of profiles by Credit_amount (bars)") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+\pagebreak
+
+```{r amount_lines, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Credit_amount (line)
+credit_trans %>% 
+  mutate(amount_1k = round(Credit_amount/1000)) %>% 
+  group_by(amount_1k) %>% 
+  summarize(avg = mean(Risk_profile=="good")) %>%
+  ggplot(aes(amount_1k,avg)) +
+  geom_point() +
+  geom_smooth() +
+  xlab("Credit amount (in k DM)") +
+  ggtitle("Quality of profiles by Credit_amount (line)") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+As shown in the three previous plots, there seems to be a trend by which holders of higher amount credits have a worse risk profile than lower ones. This makes sense as high amount credits are riskier than lower amount ones.
+
+\pagebreak
+
+
+```{r duration_barplot, message = FALSE, error = FALSE,  warning = FALSE}
+# Duration boxplot
+credit_trans %>% ggplot(aes(Risk_profile,Duration,fill=Risk_profile,alpha=.5)) + 
+  geom_boxplot() +
+  ggtitle("Duration boxplot") +
+  xlab("Risk profile")
+```
+
+```{r duration_bars, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Duration (bars)
+credit_trans %>% 
+  group_by(Duration) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(Duration,-avg_good),avg_good,fill=Duration)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Duration") +
+  ggtitle("Quality of profiles by Duration (bars)") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+```{r duration_lines, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Duration (lines)
+credit_trans %>% 
+  group_by(Duration) %>% 
+  summarize(avg = mean(Risk_profile=="good")) %>%
+  ggplot(aes(Duration,avg)) +
+  geom_point() +
+  geom_smooth() +
+  ggtitle("Quality of profiles by Duration (lines)") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+The three plots above show that clients with longer duration credits have a worse risk profile than shorter ones. This makes sense as the risk is higher when the bank has to face the possibility of default for a longer time. 
+
+
+\pagebreak
+
+```{r quality_by_sex, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Sex
+credit_trans %>% 
+  group_by(Sex) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(Sex,-avg_good),avg_good,fill=Sex)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Sex") +
+  ggtitle("Quality of profiles by Sex") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+\pagebreak
+
+```{r quality_by_job, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Job
+credit_trans %>% 
+  group_by(Job) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(Job,-avg_good),avg_good,fill=Job)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Job") +
+  ggtitle("Quality of profiles by Job") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+\pagebreak
+
+```{r quality_by_housing, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Housing
+credit_trans %>% 
+  group_by(Housing) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(Housing,-avg_good),avg_good,fill=Housing)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Housing") +
+  ggtitle("Quality of profiles by Housing") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+\pagebreak
+
+```{r quality_by_savings_account, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Savings_account
+credit_trans %>% 
+  group_by(Savings_account) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(Savings_account,-avg_good),avg_good,fill=Savings_account)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Savings account") +
+  ggtitle("Quality of profiles by Savings_account") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+
+\pagebreak
+
+```{r quality_by_purpose, message = FALSE, error = FALSE,  warning = FALSE}
+# Quality of profiles by Purpose
+credit_trans %>% 
+  group_by(Purpose) %>% 
+  summarize(avg_good = mean(Risk_profile=="good")) %>% 
+  ggplot(aes(reorder(Purpose,-avg_good),avg_good,fill=Purpose)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Purpose") +
+  ggtitle("Quality of profiles by Purpose") +
+  ylab("Average of \"good\" risk profiles")
+```
+
+Sex, Job, Housing, Savings account and Purpose seem to have a less significant correlation with the risk profile.
 
 \pagebreak
 
 ## Modeling approach
 
-### RMSE function 
+The data frame perf_results is created to keep track of the different models performance so as they can be easily compared.
 
-As mentioned before, RMSE will be used as the loss function for model testing. RMSE can be defined as:
+```{r results_df, message = FALSE, error = FALSE,  warning = FALSE}
+perf_results <- data_frame()
+```
 
-$$ RMSE = \sqrt{\frac{1}{N}\displaystyle\sum_{u,i} (\hat{y}_{u,i}-y_{u,i})^{2}} $$
+Also, a function for F1-scores calculation is created as it will be applied to all models.
 
-Basically we'll be computing the mean of the difference between our predictions and the true ratings in the test/validation test for all combinations of user + movie (i.e. rating) as an estimation of he different models' error.
+The F1-score metric is calculated as:
 
-The algorithm needs to minimize RMSE.
+$$ F_{1}-Score  =  2 * \frac{precision*recall}{precision+recall} $$
 
-This code chunk creates a specific function to apply RMSE whenever necessary: 
-
-```{r rmse, message = FALSE, error = FALSE,  warning = FALSE}
-RMSE <- function(true_ratings, predicted_ratings){
-  sqrt(mean((true_ratings - predicted_ratings)^2))
+```{r F1_fun, message = FALSE, error = FALSE,  warning = FALSE}
+# F1-score calculation
+f1 <- function(y_hat,y){
+  precision <- posPredValue(y_hat, y, positive="1")
+  recall <- sensitivity(y_hat, y, positive="1")
+  F1 <- (2 * precision * recall) / (precision + recall)
+  F1
 }
 ```
 
-The data frame rmse_results is created to keep track of the different models performance so as they can be easily compared.
 
-```{r}
-rmse_results <- data_frame()
+All models are trained and parameters fitted by using the functions included in the caret package.
+
+
+### Model 1: Logistic regresion
+
+Logistic regression is a very common algorithm used for binary classification problems although it can be applied in many other cases. 
+
+In this case, considering the apparent high correlation between some predictors and the outcome, the first approach will be to apply a logistic regression model to the data.
+
+All variables will be considered as predictors for the model fitting process.
+
+```{r glm, message = FALSE, error = FALSE,  warning = FALSE}
+#------------------------
+### Logistic regresion
+#------------------------
+
+# trainctrl <- trainControl(verboseIter = TRUE)
+
+# Train model
+fit_glm <- train(Risk ~ ., method="glm", data = credit_train)
+
+# Calculate predictions using fitted model
+y_hat_glm <- predict(fit_glm, credit_test, type = "raw")
+
+# Display results
+cm_glm <- confusionMatrix(y_hat_glm,credit_test$Risk)
+Acc_glm <- cm_glm$overall[["Accuracy"]]
+F1_glm <- f1(y_hat_glm,credit_test$Risk)
+
+# Save first metric result in perf_results
+perf_results <- data_frame(method = "Logistic regresion", Accuracy = Acc_glm, F1_score = F1_glm)
+perf_results %>% knitr::kable()
 ```
-
-### Model 1: Predicting the average
-
-As a baseline approach, a very simple algorithm which calculates the mean for all the dataset's ratings and uses it as the predicted value for all movies will be used.
-
-A high RMSE is expected when using such a basic approach.
-
-This model can be defined as:
-
-$$ Y_{u, i} = \mu + \epsilon_{u, i} $$
-Expected value: 
-```{r mu}
-# General mean of all ratings
-mu <- mean(edx_train$rating) 
-c("mu"=mu)
-```
-
-```{r baseline, message = FALSE, error = FALSE,  warning = FALSE}
-# Simple calculation of RMSE when using general mean mu to guess rating
-baseline_rmse <- RMSE(edx_test$rating, mu)
-baseline_rmse
-
-# Save first RMSE result in rmse_results
-rmse_results <- data_frame(method = "Model 1: Predicting the average", RMSE = baseline_rmse)
-rmse_results %>% knitr::kable()
-```
-
-As expected, RMSE for this approach is higher than 1 which implies a rather bad performance.
 
 \pagebreak
 
-### Model 2: Movie bias
+### Model 2: Decision tree
 
-The assumption that all movies will have a rating equal to the mean regardless of the movie and/or the user giving the rating is not a valid approach. We need to take other effects into consideration.
+Parameter *cp* will be optimized with cross-validation.
 
-The first one that will be included in the model is the movie effect. This accounts for the fact that different movies get higher or lower rates from all users for different reasons, and can be represented as  $$ b_{i} $$ in our model. 
+```{r dt1, message = FALSE, error = FALSE,  warning = FALSE}
+#------------------------
+### Decision tree
+#------------------------
 
-As shown in the definition, this effect doesn't take into account different users as it assumes that certain movies will get rated higher (or lower) regardless of the user giving the rating.
+# Train model
+fit_dt <- train(Risk ~ ., data = credit_train,method="rpart",
+                   tuneGrid = data.frame(cp = seq(0, 0.05, 0.002)), 
+                trControl = trainControl(method = "cv"))
 
-The model including the movie effect looks like this:
-
-$$ Y_{u, i} = \mu + b_{i} + \epsilon_{u, i} $$
-This could be computed by using the lm() function, but given the size of the dataset the calculation would take too long and thus this will be calculated by using the model's formula itself:
-
-$$ b_{i} = Y_{u, i} - \mu $$
-
-If we take a movie rating from a user and substract the mean, the difference must represent the movie effect.
-
-```{r model2_1, message = FALSE, error = FALSE,  warning = FALSE}
-# Calculation of movie effect b_i for each movie
-movie_bias <- edx_train %>% 
-  group_by(movieId) %>% 
-  summarize(b_i = mean(rating - mu))
-
-# b_i distribution shows some movies tend to receive better rates from users than others
-# ("good movies", "bad movies")
-movie_bias %>% qplot(b_i, geom ="histogram", bins = 10, data = ., color = I("black")) 
+# Calculate predictions using fitted model and check results
+y_hat_dt <- predict(fit_dt, credit_test, type = "raw")
+cm_dt <- confusionMatrix(y_hat_dt, credit_test$Risk)
+Acc_dt <- cm_dt$overall[["Accuracy"]]
+F1_dt <- f1(y_hat_dt,credit_test$Risk)
 ```
 
-b_i distribution shows high variability due to the movie effect, as expected.
+Optimal *cp* parameter for Decision tree
 
-```{r model2_2, message = FALSE, error = FALSE,  warning = FALSE}
-# Use b_i estimation to calculate estimated rating for all movies on the test set
-# taking into account the movie bias
-pred_b_i <- mu + edx_test %>% 
-  left_join(movie_bias, by='movieId') %>%
-  .$b_i
-
-# Calculate RMSE for this model and save the result in rmse_results table
-model_2_rmse <- RMSE(pred_b_i, edx_test$rating)
-rmse_results <- bind_rows(rmse_results, data_frame(method="Model 2: Movie Effect Model", RMSE = model_2_rmse ))
-rmse_results %>% knitr::kable()
-
+```{r dt2, message = FALSE, error = FALSE,  warning = FALSE}
+# Optimal cp parameter
+ggplot(fit_dt)
+fit_dt$bestTune
 ```
 
-This approach improves model 1, but RMSE remains rather high so additional factors need to be considered.
+Final model for decision tree
+
+```{r dt3, message = FALSE, error = FALSE,  warning = FALSE}
+# Tree visualization
+plot(fit_dt$finalModel, margin = 0.1)
+text(fit_dt$finalModel, cex = 0.75)
+```
+
+Decision tree results
+
+```{r dt4, message = FALSE, error = FALSE,  warning = FALSE}
+# Save metric in perf_results
+perf_results <- bind_rows(perf_results, data_frame(method="Decision tree", Accuracy = Acc_dt, F1_score = F1_dt ))
+perf_results %>% knitr::kable()
+```
 
 \pagebreak
 
-### Model 3: Movie bias + User bias
+### Model 3: Random forest
 
-The plot "Average rating per user for users with > 100 ratings (user bias)" shown in the Data exploratory analysis section of this report shows that there's also high variability due to the User effect.
+Let's see if bagging multiple decision trees by using Random forest can improve the previous result.
 
-The third model takes into account this variability by including it as
+Parameter *mtry* will be optimized by using cross-validation with the train() function. Parameter *ntree* will be set at a fixed value of 1000.
 
-$$ b_{u} $$
-
-This accounts for the fact that some users will regularly tend to rate lower than the average whereas other users will be less critical and will tend to rate higher than the average. 
-
-The User effect compensates this variability and attempts to soften deviations due to this User effect.
-
-The resulting model looks like this:
-
-$$ Y_{u, i} = \mu + b_{i} + b_{u} + \epsilon_{u, i} $$
-
-As in the previous case, using lm would be too costly in terms of computing time and thus the model formula will be used instead:
-
-$$ b_{u} = Y_{u, i} - \mu - b_{i} $$
-
-Given a rating, the mean and the movie effect is substracted from it and the remaining value represents the variability due to the User bias.
-
-```{r model3_1, message = FALSE, error = FALSE,  warning = FALSE}
-# Calculation of user effect b_u for each movie
-user_bias <- edx_train %>% 
-  left_join(movie_bias, by='movieId') %>%
-  group_by(userId) %>%
-  summarize(b_u = mean(rating - mu - b_i))
-
-# b_u distribution shows some user bias: some users tend to rate higher than others
-user_bias %>% qplot(b_u, geom ="histogram", bins = 10, data = ., color = I("black"))
+```{r rf1, message = FALSE, error = FALSE,  warning = FALSE}
+#Parameters (mtry) fit. ntree parameter is set at a fixed value of 1000
+fit_rf <- train(Risk ~ .
+                , data = credit_train,method="rf",
+                tuneGrid = data.frame(mtry = seq(1,15)),ntree=1000)
 ```
 
-b_u distribution shows significant variability due to the user effect, as expected.
+Optimal *mtry* parameter for Random forest
 
-```{r model3_2, message = FALSE, error = FALSE,  warning = FALSE}
-# Use b_u estimation of user effect to calculate estimated rating for all movies on the test set
-# taking into account the user bias
-pred_b_u <- edx_test %>% 
-  left_join(movie_bias, by='movieId') %>%
-  left_join(user_bias, by='userId') %>%
-  mutate(pred = mu + b_i + b_u) %>%
-  .$pred
-
-model_3_rmse <- RMSE(pred_b_u, edx_test$rating)
-rmse_results <- bind_rows(rmse_results,
-                          data_frame(method="Model 3: Movie + User Effects Model",  
-                                     RMSE = model_3_rmse ))
-rmse_results %>% knitr::kable()
+```{r rf2, message = FALSE, error = FALSE,  warning = FALSE}
+# Optimal mtry parameter
+print(fit_rf)
+ggplot(fit_rf)
+fit_rf$bestTune
 ```
 
-The RMSE shows there's a significant improvement when the User effect is taken into account in the model. However, there's still room for improvement.
+Feature importance analysis
+
+```{r rf3, message = FALSE, error = FALSE,  warning = FALSE}
+# Feature importance analysis
+imp <- varImp(fit_rf)
+imp
+```
+
+
+Random forest results
+
+```{r rf4, message = FALSE, error = FALSE,  warning = FALSE}
+# Calculate predictions using fitted model and check results
+y_hat_rf <- predict(fit_rf, credit_test, type = "raw")
+cm_rf <- confusionMatrix(y_hat_rf,credit_test$Risk)
+Acc_rf <- cm_rf$overall[["Accuracy"]]
+F1_rf <- f1(y_hat_rf,credit_test$Risk)
+
+# Save metric in perf_results
+perf_results <- bind_rows(perf_results, data_frame(method="Random forest", Accuracy = Acc_rf, F1_score = F1_rf ))
+perf_results %>% knitr::kable()
+```
 
 \pagebreak
 
-### Model 4: Regularized Movie bias + User bias
+### Model 4: SVM
 
-Despite the high variability due to the movie bias, the RMSE improvement from model 1 to model 2 is not that good. 
+```{r svm1, message = FALSE, error = FALSE,  warning = FALSE}
+#------------------------
+### SVM with Linear Kernel
+#------------------------
 
-This may be the result of large rating estimations created with only few ratings which leads to uncertainty. To account for this effect, regularization will be applied.
+# Set up Repeated k-fold Cross Validation
+train_control <- trainControl(method="repeatedcv", number=25, repeats=3)
 
-We'll assume that large estimations are formed by few ratings and will penalize such estimations so as to compensate the variability due to this effect.
-
-Both the movie effect and the user effect will be regularized for which the optimal lambda which minimizes the RMSE needs to be computed:
-
-```{r model4_1, message = FALSE, error = FALSE,  warning = FALSE}
-# Choose lambda parameter using cross-validation
-lambdas <- seq(0, 10, 0.25)
-mu <- mean(edx_train$rating)
-
-# Calculate b_i and b_u for each lambda value. Then calculate predictions using b_i and b_u and 
-# validate model with RMSE
-rmses <- sapply(lambdas, function(l){
-  b_i <- edx_train %>%
-    group_by(movieId) %>%
-    summarize(b_i = sum(rating - mu)/(n()+l))
-  
-  b_u <- edx_train %>%
-    left_join(b_i, by="movieId") %>%
-    group_by(userId) %>%
-    summarize(b_u = sum(rating - b_i - mu)/(n()+l))
-  
-  pred_ratings <-
-    edx_test %>%
-    left_join(b_i, by = "movieId") %>%
-    left_join(b_u, by = "userId") %>%
-    mutate(pred = mu + b_i + b_u) %>%
-    pull(pred)
-  
-  return(RMSE(pred_ratings, edx_test$rating))
-})
-
-# Keep lambda which minimizes RMSE
-qplot(lambdas, rmses)
-lambda <- lambdas[which.min(rmses)] 
-lambda
+# Fit the model 
+svm <- train(Risk ~ ., data = credit_train, 
+              method = "svmLinear", trControl = train_control)
 ```
 
-This is the optimal value for the lambda regularization parameter that is going to be used to train the algorithm.
+View of the SVM model
 
-```{r model4_2, message = FALSE, error = FALSE,  warning = FALSE}
-# Calculate regularized b_i using optimal lambda
-b_i <- edx_train %>%
-  group_by(movieId) %>%
-  summarize(b_i = sum(rating - mu)/(n()+lambda))
+```{r svm2, message = FALSE, error = FALSE,  warning = FALSE}
+#View the model
+svm
 
-# Calculate regularized b_u using optimal lambda
-b_u <- edx_train %>%
-  left_join(b_i, by="movieId") %>%
-  group_by(userId) %>%
-  summarize(b_u = sum(rating - b_i - mu)/(n()+lambda))
-
-# Estimate predictions
-pred_ratings4 <-
-  edx_test %>%
-  left_join(b_i, by = "movieId") %>%
-  left_join(b_u, by = "userId") %>%
-  mutate(pred = mu + b_i + b_u) %>%
-  pull(pred)
-
-# Apply RMSE and save results
-model_4_rmse <- RMSE(pred_ratings4, edx_test$rating)
-rmse_results <- bind_rows(rmse_results,
-                          data_frame(method="Model 4: Regularized Movie + User Effect Model",  
-                                     RMSE = model_4_rmse ))
-rmse_results %>% knitr::kable()
 ```
 
-The RMSE shows that regularization helps to further improve the model results. 
+SVM results
+
+```{r svm3, message = FALSE, error = FALSE,  warning = FALSE}
+# Calculate predictions using fitted model and check results
+y_hat_svm <- predict(svm, credit_test, type = "raw")
+cm_svm <- confusionMatrix(y_hat_svm, credit_test$Risk)
+Acc_svm <- cm_svm$overall[["Accuracy"]]
+F1_svm <- f1(y_hat_svm,credit_test$Risk)
+
+# Save metric in perf_results
+perf_results <- bind_rows(perf_results, data_frame(method="SVM with Linear Kernel", Accuracy = Acc_svm, F1_score = F1_svm ))
+perf_results %>% knitr::kable()
+```
 
 \pagebreak
 
-### Model 5: Regularized Movie + User + Year of release + Rating year + Genres effects
+### Model 5: kNN
 
-The exploratory analysis shows that both the year of release for each movie as well as the year when the rating was given have a certain amount of variability.
+Considering the relatively high number of variables, kNN is not expected to outperform the other methods.
 
-The different genres also need to be taken into consideration although they will be considered grouped rather than individually due to computing capacity.
+```{r knn1, message = FALSE, error = FALSE,  warning = FALSE}
+control <- trainControl(method = "cv", number = 10, p = .9)
 
-The above model (Model 4) which already takes into account both the movie and the user biases, will be improved by incorporating the year of release, year of rating and genre effects to it.
-
-Regularization will be applied to all effects.
-
-```{r model5_1, message = FALSE, error = FALSE,  warning = FALSE}
-# Choose lambda parameter using cross-validation
-lambdas <- seq(0, 10, 0.25)
-mu <- mean(edx_train$rating)
-# Warning: the following code can take several minutes to execute.
-
-# Calculate b_i,b_u,b_yrl,b_yrt,b_g for each lambda value. Then calculate predictions using all biases and 
-# validate model with RMSE
-rmses <- sapply(lambdas, function(l){
-  b_i <- edx_train %>%
-    group_by(movieId) %>%
-    summarize(b_i = sum(rating - mu)/(n()+l))
-  
-  b_u <- edx_train %>%
-    left_join(b_i, by="movieId") %>%
-    group_by(userId) %>%
-    summarize(b_u = sum(rating - b_i - mu)/(n()+l))
-  
-  b_yrl <- edx_train %>%
-    left_join(b_i, by="movieId") %>%
-    left_join(b_u, by="userId") %>%
-    group_by(year_release) %>%
-    summarize(b_yrl = sum(rating - b_i - b_u - mu)/(n()+l))
-  
-  b_yrt <- edx_train %>%
-    left_join(b_i, by="movieId") %>%
-    left_join(b_u, by="userId") %>%
-    left_join(b_yrl, by="year_release") %>%
-    group_by(year_rating) %>%
-    summarize(b_yrt = sum(rating - b_i - b_u - b_yrl - mu)/(n()+l))
-  
-  b_g <- edx_train %>%
-    left_join(b_i, by="movieId") %>%
-    left_join(b_u, by="userId") %>%
-    left_join(b_yrl, by="year_release") %>%
-    left_join(b_yrt, by="year_rating") %>%
-    group_by(genres) %>%
-    summarize(b_g = sum(rating - b_i - b_u - b_yrl - b_yrt - mu)/(n()+l))
-  
-  pred_ratings <-
-    edx_test %>%
-    left_join(b_i, by = "movieId") %>%
-    left_join(b_u, by = "userId") %>%
-    left_join(b_yrl, by = "year_release") %>%
-    left_join(b_yrt, by = "year_rating") %>%
-    left_join(b_g, by = "genres") %>%
-    mutate(pred = mu + b_i + b_u + b_yrl + b_yrt + b_g) %>%
-    pull(pred)
-  
-  return(RMSE(pred_ratings, edx_test$rating))
-})
-
-# Keep lambda which minimizes RMSE
-qplot(lambdas, rmses)
-lambda <- lambdas[which.min(rmses)] 
-lambda
+# Fit the model 
+fit_knn <- train(Risk ~ ., method = "knn", 
+                      data = credit_train,
+                      tuneGrid = data.frame(k = seq(3, 61, 2)))
 ```
 
-This is the optimal value for the lambda regularization parameter that is going to be used to train the algorithm.
+Optimal K parameter
 
-```{r, message = FALSE, error = FALSE,  warning = FALSE}
-# Calculate regularized b_i using optimal lambda
-b_i <- edx_train %>%
-  group_by(movieId) %>%
-  summarize(b_i = sum(rating - mu)/(n()+lambda))
+```{r knn2, message = FALSE, error = FALSE,  warning = FALSE}
+# Optimal K parameter
+ggplot(fit_knn)
+fit_knn$bestTune
 
-# Calculate regularized b_u using optimal lambda
-b_u <- edx_train %>%
-  left_join(b_i, by="movieId") %>%
-  group_by(userId) %>%
-  summarize(b_u = sum(rating - b_i - mu)/(n()+lambda))
-
-# Calculate regularized b_yrl using optimal lambda
-b_yrl <- edx_train %>%
-  left_join(b_i, by="movieId") %>%
-  left_join(b_u, by="userId") %>%
-  group_by(year_release) %>%
-  summarize(b_yrl = sum(rating - b_i - b_u - mu)/(n()+lambda))
-
-# Calculate regularized b_yrt using optimal lambda
-b_yrt <- edx_train %>%
-  left_join(b_i, by="movieId") %>%
-  left_join(b_u, by="userId") %>%
-  left_join(b_yrl, by="year_release") %>%
-  group_by(year_rating) %>%
-  summarize(b_yrt = sum(rating - b_i - b_u - b_yrl - mu)/(n()+lambda))
-
-# Calculate regularized b_g using optimal lambda
-b_g <- edx_train %>%
-  left_join(b_i, by="movieId") %>%
-  left_join(b_u, by="userId") %>%
-  left_join(b_yrl, by="year_release") %>%
-  left_join(b_yrt, by="year_rating") %>%
-  group_by(genres) %>%
-  summarize(b_g = sum(rating - b_i - b_u - b_yrl - b_yrt - mu)/(n()+lambda))
-
-# Estimate predictions
-pred_ratings5 <-
-  edx_test %>%
-  left_join(b_i, by = "movieId") %>%
-  left_join(b_u, by = "userId") %>%
-  left_join(b_yrl, by = "year_release") %>%
-  left_join(b_yrt, by = "year_rating") %>%
-  left_join(b_g, by = "genres") %>%
-  mutate(pred = mu + b_i + b_u + b_yrl + b_yrt + b_g) %>%
-  pull(pred)
-
-# Apply RMSE and save results
-model_5_rmse <- RMSE(pred_ratings5, edx_test$rating)
-rmse_results <- bind_rows(rmse_results,
-                          data_frame(method="Model 5: Regularized Movie + User + Release year + Rating year + genres Effect Model",  
-                                     RMSE = model_5_rmse ))
-rmse_results %>% knitr::kable()
 ```
 
-As can be seen, adding the years and the genres effects substantially improves the RMSE.
+**kNN results**
 
-As it presents the lower RMSE, this will be the model that is going to be evaluated on the validation set.
+```{r knn3, message = FALSE, error = FALSE,  warning = FALSE}
+# Calculate predictions using fitted model and check results
+y_hat_knn <- predict(fit_knn, credit_test, type = "raw")
+cm_knn <- confusionMatrix(y_hat_knn, credit_test$Risk)
+Acc_knn <- cm_knn$overall[["Accuracy"]]
+F1_knn <- f1(y_hat_knn,credit_test$Risk)
 
-\pagebreak
-
-### Model 5 (Regularized Movie + User + Year of release + Rating year + Genres effects) applied on validation set
-
-As the optimal lambda has already been computed, in this final step the model will be trained on the edx set using the optimal lambda previously calculated and then it will be evaluated on the validation set.
-
-```{r, message = FALSE, error = FALSE,  warning = FALSE}
-mu <- mean(edx$rating)
-
-# Calculate regularized b_i using optimal lambda
-b_i <- edx %>%
-  group_by(movieId) %>%
-  summarize(b_i = sum(rating - mu)/(n()+lambda))
-
-# Calculate regularized b_u using optimal lambda
-b_u <- edx %>%
-  left_join(b_i, by="movieId") %>%
-  group_by(userId) %>%
-  summarize(b_u = sum(rating - b_i - mu)/(n()+lambda))
-
-# Calculate regularized b_yrl using optimal lambda
-b_yrl <- edx %>%
-  left_join(b_i, by="movieId") %>%
-  left_join(b_u, by="userId") %>%
-  group_by(year_release) %>%
-  summarize(b_yrl = sum(rating - b_i - b_u - mu)/(n()+lambda))
-
-# Calculate regularized b_yrt using optimal lambda
-b_yrt <- edx %>%
-  left_join(b_i, by="movieId") %>%
-  left_join(b_u, by="userId") %>%
-  left_join(b_yrl, by="year_release") %>%
-  group_by(year_rating) %>%
-  summarize(b_yrt = sum(rating - b_i - b_u - b_yrl - mu)/(n()+lambda))
-
-# Calculate regularized b_g using optimal lambda
-b_g <- edx %>%
-  left_join(b_i, by="movieId") %>%
-  left_join(b_u, by="userId") %>%
-  left_join(b_yrl, by="year_release") %>%
-  left_join(b_yrt, by="year_rating") %>%
-  group_by(genres) %>%
-  summarize(b_g = sum(rating - b_i - b_u - b_yrl - b_yrt - mu)/(n()+lambda))
-
-# Estimate predictions on validation set
-pred_ratings6 <-
-  validation %>%
-  left_join(b_i, by = "movieId") %>%
-  left_join(b_u, by = "userId") %>%
-  left_join(b_yrl, by = "year_release") %>%
-  left_join(b_yrt, by = "year_rating") %>%
-  left_join(b_g, by = "genres") %>%
-  mutate(pred = mu + b_i + b_u + b_yrl + b_yrt + b_g) %>%
-  pull(pred)
-
-# Apply RMSE on validation set and save results
-model_6_rmse <- RMSE(pred_ratings6, validation$rating)
-
-rmse_results <- bind_rows(rmse_results,
-                          data_frame(method="Model 5: Evalutaion on validation set",  
-                                     RMSE = model_6_rmse ))
-rmse_results %>% knitr::kable()
+# Save metric in perf_results
+perf_results <- bind_rows(perf_results, data_frame(method="kNN", Accuracy = Acc_knn, F1_score = F1_knn ))
+perf_results %>% knitr::kable()
 ```
 
 \pagebreak
@@ -760,31 +928,29 @@ rmse_results %>% knitr::kable()
 This is the final result
 
 ```{r results, message = FALSE, error = FALSE,  warning = FALSE}
-rmse_results %>% knitr::kable()
+perf_results %>% knitr::kable()
 ```
 
-The lowest value for the RMSE is
+The highest value for Accuracy is
 
-```{r model5_rmse, echo=FALSE}
-model_5_rmse
+```{r highest_acc, echo=FALSE}
+Acc_glm
 ```
 
-When applied on the validation set the RMSE is
-
-```{r final_rmse, echo=FALSE}
-model_6_rmse
-```
+provided by the **logistic regression** model.
 
 # Conclusion
 
-A model to predict movie ratings has been built by testing different approaches and choosing the one with best results.
+A model to predict credit risk profile qualities has been built by testing different approaches and choosing the one with best results.
 
-The optimal model accounts for the effects of movie, user, year of release, year of rating and genre.
+The optimal model accounts for the variability due to the different features available in the dataset.
 
-The final RMSE obtained with the optimal model run on the validation set is
+The final accuracy obtained with the optimal model, which turned out to be **logistic regression**, is
 
-```{r final_rmse2, echo=FALSE}
-model_6_rmse
+```{r final_acc, echo=FALSE}
+Acc_glm
 ```
+
+
 
 
